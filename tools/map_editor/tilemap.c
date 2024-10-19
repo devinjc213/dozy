@@ -3,64 +3,51 @@
 #include "tilemap.h"
 #include "../../shared/logger.h"
 #include "defs.h"
+#include "texture_cache.h"
 
-TileMap* create_tilemap() {
+TileMap* create_tilemap(int height, int width, int layers) {
     TileMap* map = malloc(sizeof(TileMap));
-    map->count = 0;
-    map->max_size = MAX_TILES;
-    map->tiles = malloc(sizeof(Tile) * MAX_TILES);
+    map->height = height;
+    map->width = width;
+    map->layer_count = layers; 
+    map->prop_count = 0;
+    map->props_layer = malloc(height * width * sizeof(PropTile));
+    map->render_layers = malloc(layers * sizeof(RenderLayer));
+
+    for (int i = 0; i < layers; i++) {
+        init_render_layer(&map->render_layers[0], INITIAL_LAYER_CAPACITY);
+    }
     
     return map;
 }
 
-int add_tile(TileMap* tilemap, int x, int y, Sprite* sprite) {
-    if (tilemap->count >= tilemap->max_size) {
-        GWARN("Reached maximum tile limit");
-        return 1;
-    }
-
-    // check for existing tile in this location first
-    // if a different sprite, we can just update the same block
-    // reminder: add other tile props when I get there
-    Tile* found_tile = find_tile_by_coords(tilemap, x, y);
-    if (found_tile != NULL && found_tile->sprite != sprite) {
-        found_tile->sprite = sprite;
-        return 0;
-    }
-
-    Tile* new_tile = malloc(sizeof(Tile));
-    new_tile->sprite = sprite;
-    new_tile->rect.x = x;
-    new_tile->rect.y = y;
-    tilemap->tiles[tilemap->count++] = new_tile;
-    return 0;
+void init_render_layer(RenderLayer* render_layer, int initial_capacity) {
+    render_layer->count = 0;
+    render_layer->capacity = initial_capacity;
+    render_layer->tiles = malloc(initial_capacity * sizeof(RenderTile));
 }
 
-Tile* find_tile_by_coords(TileMap* tilemap, int x, int y) {
-    for (int i = 0; i < tilemap->count; i++) {
-        if (tilemap->tiles[i]->rect.x == x && tilemap->tiles[i]->rect.y == y) {
-            return tilemap->tiles[i];
-        }
+void add_render_tile(RenderLayer* layer, RenderTile tile) {
+    if (layer->count == layer->capacity) {
+        layer->capacity *= 2;
+        layer->tiles = realloc(layer->tiles, layer->capacity * sizeof(RenderTile));
     }
 
-    return NULL;
+    layer->tiles[layer->count++] = tile;
 }
 
-void remove_tile(TileMap* tilemap, Tile* tile_to_remove) {
-    for (int i = 0; i < tilemap->count; i++) {
-        if (tilemap->tiles[i] == tile_to_remove) {
-            free(tile_to_remove);
-            tilemap->tiles[i] = tilemap->tiles[--tilemap->count];
-            return;
-        }
+void add_prop_tile(TileMap* map, PropTile props) {
+    if (map->prop_count == map->height * map->width) {
+        GERROR("Prop tiles full");
     }
+
+    map->props_layer[map->prop_count++] = props;
 }
 
-void free_tilemap(TileMap* tilemap) {
-    for (int i = 0; i < tilemap->count; i++) {
-        free(tilemap->tiles[i]);
-    }
 
-    free(tilemap->tiles);
-    free(tilemap);
+void render_layer(RenderLayer* layer, SDL_Renderer* renderer, TextureCache* cache) {
+    for (int i = 0; i < layer->count; i++) {
+        SDL_Texture* texture = get_texture(cache, renderer, layer->tiles[i].tilesheet);
+        SDL_RenderCopy(renderer, texture, &layer->tiles[i].src, &layer->tiles[i].dest);
+    }
 }
